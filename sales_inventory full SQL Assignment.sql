@@ -982,24 +982,138 @@ FROM total_spent_per_customer;
 -- =====================================================
 
 -- 81. Which customers bought products in more than one category?
+WITH multiple_categories AS (
+	SELECT c.customer_id , count(DISTINCT p.category ) AS categories
+	FROM ASSIGNMENT.customers c 
+	JOIN ASSIGNMENT.sales s 
+		ON c.customer_id = s.customer_id 
+	JOIN ASSIGNMENT.products p 
+		ON s.product_id = p.product_id 
+	GROUP BY c.customer_id
+)
+SELECT *
+FROM multiple_categories 
+WHERE categories > 1;
 
 -- 82. Which customers purchased products within 7 days of registering?
+SELECT c.customer_id ,c.first_name ,c.last_name 
+FROM ASSIGNMENT.customers c 
+JOIN ASSIGNMENT.sales s 
+	ON c.customer_id = s.customer_id 
+WHERE s.sale_date BETWEEN c.registration_date AND c.registration_date + INTERVAL '7 days';
 
 -- 83. Which products have lower stock remaining than the average stock quantity?
+SELECT p.product_id ,p.product_name, p.stock_quantity  
+FROM ASSIGNMENT.products p 
+WHERE p.stock_quantity < (SELECT avg(p.stock_quantity ) AS Average_stock_quantity
+FROM ASSIGNMENT.products p
+);
 
 -- 84. Which customers purchased the same product more than once?
+SELECT c.customer_id, c.first_name, c.last_name, s.product_id, COUNT(*) AS purchase_count
+FROM ASSIGNMENT.customers c
+JOIN ASSIGNMENT.sales s
+    ON c.customer_id = s.customer_id
+GROUP BY c.customer_id, c.first_name, c.last_name, s.product_id
+HAVING COUNT(*) > 1;
 
 -- 85. Which product categories generated the highest total revenue?
+WITH total_revenue_category AS (
+SELECT p.category , sum(s.total_amount) AS Total_revenue
+FROM ASSIGNMENT.products p 
+JOIN ASSIGNMENT.sales s 
+	ON p.product_id = s.product_id 
+GROUP BY p.category
+)
+SELECT *, dense_rank()OVER (ORDER BY total_revenue desc) AS revenue_ranking
+FROM total_revenue_category ;
 
 -- 86. Which products are among the top 3 most sold products?
+WITH aggregate_quantity_sold AS (
+	SELECT p.product_name, sum(s.quantity_sold ) AS total_quantity_sold
+	FROM ASSIGNMENT.products p 
+	JOIN ASSIGNMENT.sales s 
+		ON p.product_id = s.product_id
+	GROUP BY p.product_name
+),
+product_sold_ranks AS (
+	SELECT *, 
+		dense_rank() OVER (ORDER BY total_quantity_sold desc) AS quantity_sold_ranking
+	FROM aggregate_quantity_sold
+)
+SELECT *
+FROM product_sold_ranks  
+WHERE quantity_sold_ranking <= 3;
 
 -- 87. Which customers purchased the most expensive product?
-
+WITH price_ranking_table AS (	
+	SELECT  s.customer_id, s.product_id ,p.product_name , p.price,
+		dense_rank()OVER (ORDER BY p.price desc) AS price_rankings
+	FROM ASSIGNMENT.sales s 
+	JOIN ASSIGNMENT.products p 
+		ON p.product_id = s.product_id 
+)
+SELECT c.customer_id ,c.first_name ,c.last_name 
+FROM price_ranking_table pr 
+JOIN ASSIGNMENT.customers c 
+	ON pr.customer_id = c.customer_id 
+WHERE pr.price_rankings = 1;
+	
 -- 88. Which products were purchased by the highest number of unique customers?
+-- 88. Which products were purchased by the highest number of unique customers?
+WITH product_customer_count AS (
+    SELECT 
+        p.product_id,
+        p.product_name,
+        COUNT(DISTINCT s.customer_id) AS unique_customers
+    FROM ASSIGNMENT.products p
+    JOIN ASSIGNMENT.sales s 
+        ON p.product_id = s.product_id
+    GROUP BY p.product_id, p.product_name
+)
+SELECT *
+FROM (
+    SELECT *,
+        DENSE_RANK() OVER (ORDER BY unique_customers DESC) AS ranking
+    FROM product_customer_count
+) ranked
+WHERE ranking = 1;
 
 -- 89. Which customers made purchases above the average sale amount?
+WITH  aggregate_total_amt_table AS (
+	SELECT c.customer_id ,c.first_name ,c.last_name ,sum(s.total_amount ) AS sum_total_amount
+	FROM ASSIGNMENT.customers c 
+	JOIN ASSIGNMENT.sales s 
+		ON c.customer_id = s.customer_id 
+	GROUP BY c.customer_id ,c.first_name ,c.last_name
+)
+SELECT *
+FROM aggregate_total_amt_table 
+WHERE sum_total_amount > (
+	SELECT avg(sum_total_amount)
+	FROM aggregate_total_amt_table
+);
 
 -- 90. Which customers purchased more products than the average quantity purchased per customer?
+-- 90. Which customers purchased more products than the average quantity purchased per customer?
+
+WITH customer_quantity AS (
+    SELECT 
+        c.customer_id,
+        c.first_name,
+        c.last_name,
+        SUM(s.quantity_sold) AS total_quantity
+    FROM ASSIGNMENT.customers c
+    JOIN ASSIGNMENT.sales s 
+        ON c.customer_id = s.customer_id
+    GROUP BY c.customer_id, c.first_name, c.last_name
+)
+SELECT *
+FROM customer_quantity
+WHERE total_quantity > (
+    SELECT AVG(total_quantity)
+    FROM customer_quantity
+);
 
 -- ADVANCED WINDOW + ANALYTICAL PROBLEMS
 
