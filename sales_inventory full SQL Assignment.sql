@@ -1118,50 +1118,288 @@ WHERE total_quantity > (
 -- ADVANCED WINDOW + ANALYTICAL PROBLEMS
 
 -- 91. Which customers rank in the top 10% of spending?
+WITH total_spending_table AS (
+	SELECT c.customer_id ,c.first_name , c.last_name , sum(s.total_amount ) AS total_spending_per_customer
+	FROM ASSIGNMENT.sales s 
+	JOIN ASSIGNMENT.customers c 
+		ON c.customer_id = s.customer_id 
+	GROUP BY c.customer_id ,c.first_name , c.last_name
+),
+total_spending_table_ranking AS (
+	SELECT *, percent_rank()OVER (ORDER BY total_spending_per_customer desc) AS percent_ranks
+	FROM total_spending_table 
+)
+SELECT *
+FROM total_spending_table_ranking 
+WHERE percent_ranks <= 0.10;
 
 -- 92. Which products contribute to the top 50% of total revenue?
+WITH aggregate_revenue_per_product_table AS (
+	SELECT p.product_id , p.product_name, sum(s.total_amount) aggregate_revenue_per_product
+	FROM ASSIGNMENT.sales s 
+	JOIN ASSIGNMENT.products p 
+		ON p.product_id = s.product_id
+	GROUP BY  p.product_id , p.product_name
+),
+total_revenue_rank_table AS (
+	SELECT *, 
+		SUM(aggregate_revenue_per_product) OVER (ORDER BY aggregate_revenue_per_product desc) AS total_rankings
+	FROM aggregate_revenue_per_product_table	
+)
+SELECT *
+FROM total_revenue_rank_table
+WHERE total_rankings/(SELECT sum(aggregate_revenue_per_product ) AS total_revenue_column
+	FROM aggregate_revenue_per_product_table) <= 0.5;
 
 -- 93. Which customers made purchases in consecutive months?
+WITH sales_with_lag AS (
+    SELECT 
+        c.customer_id,
+        c.first_name,
+        c.last_name,
+        DATE_TRUNC('month', s.sale_date) AS sale_month,
+        LAG(DATE_TRUNC('month', s.sale_date)) OVER (
+            PARTITION BY c.customer_id
+            ORDER BY s.sale_date
+        ) AS previous_month
+    FROM ASSIGNMENT.customers c
+    JOIN ASSIGNMENT.sales s
+        ON c.customer_id = s.customer_id
+)
+SELECT DISTINCT
+    customer_id,
+    first_name,
+    last_name
+FROM sales_with_lag
+WHERE sale_month = previous_month + INTERVAL '1 month';
 
 -- 94. Which products experienced the largest difference between stock quantity and total quantity sold?
+WITH total_quantity_sold_t AS (	
+	SELECT p.product_id , p.product_name , s.quantity_sold ,
+	sum(s.quantity_sold ) over() AS total_quantity_sold
+	FROM ASSIGNMENT.products p 
+	JOIN ASSIGNMENT.sales s
+		ON p.product_id = s.product_id
+),
+stock_difference_t AS (
+	SELECT *,total_quantity_sold - quantity_sold AS difference_in_stock
+	FROM total_quantity_sold_t 
+)
+SELECT *, 
+	dense_rank() OVER (ORDER BY difference_in_stock desc)
+FROM stock_difference_t ;
 
 -- 95. Which customers have spending above the average spending of their membership tier?
+WITH aggregate_customer_spending AS (
+	SELECT c.customer_id ,c.first_name , c.last_name , c.membership_status , sum(s.total_amount ) AS total_spending
+	FROM ASSIGNMENT.customers c 
+	JOIN ASSIGNMENT.sales s 
+		ON c.customer_id = s.customer_id 
+	GROUP BY c.customer_id ,c.first_name , c.last_name, c.membership_status	
+),
+aggregate_per_tier_t AS (
+	SELECT aggregate_customer_spending.membership_status , avg(total_spending ) AS average_per_tier
+	FROM aggregate_customer_spending 
+	GROUP BY aggregate_customer_spending.membership_status 
+) 
+SELECT *
+	FROM aggregate_customer_spending 
+	JOIN aggregate_per_tier_t
+		ON aggregate_customer_spending.membership_status   = aggregate_per_tier_t.membership_status  
+	WHERE total_spending > average_per_tier;
 
 -- 96. Which products have higher sales than the average sales within their category?
+WITH sales_per_product_t AS (
+	SELECT p.product_id , p.product_name , p.category , sum(s.total_amount ) AS total_sales_per_product
+	FROM ASSIGNMENT.products p 
+	JOIN ASSIGNMENT.sales s 
+		ON p.product_id = s.product_id 
+	GROUP BY p.product_id , p.product_name, p.category 
+),average_per_category_t AS (
+	SELECT sales_per_product_t.category, AVG(sales_per_product_t.total_sales_per_product ) AS average_per_category
+	FROM sales_per_product_t 
+	GROUP BY sales_per_product_t.category
+)SELECT *
+FROM sales_per_product_t  
+JOIN average_per_category_t 
+	ON sales_per_product_t.category = average_per_category_t.category 
+WHERE total_sales_per_product > average_per_category ;
 
 -- 97. Which customer made the largest single purchase relative to their total spending?
+WITH tst AS (
+	SELECT c.customer_id ,c.first_name ,c.last_name ,sum(s.total_amount ) total_spent 
+	FROM ASSIGNMENT.customers c 
+	JOIN ASSIGNMENT.sales s 
+		ON c.customer_id = s.customer_id
+	GROUP BY c.customer_id ,c.first_name ,c.last_name
+), single_purchases_t AS (
+	SELECT c.customer_id ,c.first_name ,c.last_name , s.total_amount AS single_purchases
+	FROM ASSIGNMENT.customers c 
+	JOIN ASSIGNMENT.sales s 
+		ON c.customer_id = s.customer_id
+), difference AS (
+	SELECT tst.customer_id ,tst.first_name ,tst.last_name , single_purchases / total_spent  AS relative_spending
+	FROM tst 
+	JOIN single_purchases_t
+		ON tst.customer_id = single_purchases_t.customer_id 
+), spending_rankings AS (
+	SELECT *, dense_rank() OVER (ORDER BY relative_spending DESC) AS rankings
+	FROM difference 
+)
+SELECT *
+FROM spending_rankings 
+WHERE rankings = 1;
 
 -- 98. Which products rank among the top 3 most sold products within each category?
+WITH product_sales AS (
+	SELECT p.product_id ,p.product_name ,p.category ,sum(s.quantity_sold ) sales_per_product
+	FROM ASSIGNMENT.products p 
+	JOIN ASSIGNMENT.sales s 
+		ON p.product_id = s.product_id
+	GROUP BY p.product_id ,p.product_name ,p.category
+), sales_ranking AS (
+	SELECT *, dense_rank() OVER (PARTITION BY ps.category ORDER BY ps.sales_per_product desc ) AS category_sales_rankings
+	FROM product_sales ps
+) SELECT *
+FROM sales_ranking 
+WHERE category_sales_rankings <= 3
+ORDER BY category, category_sales_rankings;
 
 -- 99. Which customers are tied for the highest total spending?
+WITH total_spending AS (
+SELECT c.customer_id ,c.first_name ,c.last_name ,sum(s.total_amount ) total_spent 
+	FROM ASSIGNMENT.customers c 
+	JOIN ASSIGNMENT.sales s 
+		ON c.customer_id = s.customer_id
+	GROUP BY c.customer_id ,c.first_name ,c.last_name
+), spending_ranking AS (
+	SELECT *, rank() OVER (ORDER BY total_spent desc) AS total_spending_rnk
+	FROM total_spending 
+) 
+SELECT *
+FROM spending_ranking 
+WHERE total_spending_rnk = 1;
 
 -- 100. Which products generated sales every year present in the dataset?
+WITH years_count AS (
+	SELECT DISTINCT EXTRACT (YEAR FROM s.sale_date) AS year_column1, count(DISTINCT EXTRACT (YEAR FROM s.sale_date)) AS count_of_years
+	FROM ASSIGNMENT.sales s
+	GROUP BY year_column1
+), product_with_years AS (
+	SELECT DISTINCT p.product_id, p.product_name, count(DISTINCT EXTRACT (YEAR FROM s.sale_date)) AS years,
+	EXTRACT (YEAR FROM s.sale_date) 
+	FROM ASSIGNMENT.products p
+	JOIN ASSIGNMENT.sales s
+		 ON p.product_id = s.product_id
+	JOIN years_count yc
+		ON  yc.year_column1 = EXTRACT (YEAR FROM s.sale_date) 
+	GROUP BY p.product_id, p.product_name, s.sale_date
+) 
+SELECT *
+FROM years_count
+WHERE count_of_years =2;
 
 -- 101. Update the products table to assign a price_category as Expensive (price > 1000), Moderate (price between 500 and 1000), or Affordable (price < 500) using CASE WHEN
+ALTER TABLE ASSIGNMENT.products 
+ADD COLUMN price_category TEXT;
+
+UPDATE ASSIGNMENT.products p
+SET price_category = 
+	CASE
+		WHEN p.price > 1000 THEN 'Expensive'
+		WHEN p.price BETWEEN 500 AND 1000 THEN 'Moderate'
+		ELSE 'Affordable'
+	END ;
 
 -- 102. Update the customers table to assign a customer_level based on total spending as VIP (>20000), Regular (10000–20000), or New (<10000) using CASE WHEN
+SELECT * FROM assignment.Customers;
+
+ALTER TABLE ASSIGNMENT.customers 
+ADD COLUMN customer_level TEXT;
+
+
+WITH total_customer_spending_table AS (
+	SELECT c.customer_id , sum(s.total_amount ) AS total_customer_spending
+	FROM ASSIGNMENT.customers c 
+	JOIN ASSIGNMENT.sales s 
+		ON c.customer_id = s.customer_id 
+	GROUP BY c.customer_id 		
+)
+UPDATE ASSIGNMENT.customers c 
+SET customer_level =
+	CASE 
+		WHEN total_customer_spending_table.total_customer_spending > 20000 THEN 'VIP'
+		WHEN total_customer_spending_table.total_customer_spending BETWEEN 10000 AND 20000 THEN 'Regular'
+		ELSE 'New'
+	END
+FROM total_customer_spending_table
+WHERE total_customer_spending_table.customer_id = c.customer_id;
 
 -- 103. Update the products table to assign a stock_status as Low Stock or Sufficient Stock based on stock_quantity using CASE WHEN
+ALTER TABLE ASSIGNMENT.products 
+ADD COLUMN stock_status TEXT;
 
+SELECT * FROM assignment.Products;
+
+UPDATE ASSIGNMENT.products p 
+SET stock_status = 
+	CASE
+		WHEN p.stock_quantity > 100 THEN 'Sufficient Stock'
+		ELSE 'Low Stock'
+	END;
+	
 -- 104. Display each customer’s registration year from the registration_date
+SELECT DISTINCT c.customer_id ,c.first_name ,c.last_name , EXTRACT (YEAR FROM registration_date) AS registration_year
+FROM ASSIGNMENT.customers c ;
 
 -- 105. Count how many customers registered in each year
+WITH registration_year_table AS (
+	SELECT DISTINCT c.customer_id ,c.first_name ,c.last_name , EXTRACT (YEAR FROM registration_date) AS registration_year
+	FROM ASSIGNMENT.customers c 
+)
+SELECT registration_year , count(registration_year ) AS number_of_registrations
+FROM registration_year_table 
+GROUP BY registration_year ;
 
 -- 106. Find the total sales amount for each month
+SELECT date_trunc('month', sale_date) AS sale_months, sum(total_amount) AS total_amount_per_month
+FROM ASSIGNMENT.sales  
+GROUP BY date_trunc('month', sale_date);
 
 -- 107. Show all sales made in the year 2023
+SELECT sale_id , EXTRACT (YEAR FROM sale_date )AS Year, total_amount
+FROM ASSIGNMENT.sales 
+WHERE EXTRACT (YEAR FROM sale_date ) = 2023;
 
 -- 108. Find the total sales amount for each year
+SELECT EXTRACT (YEAR FROM sale_date )AS sale_year, sum(total_amount) AS total_sales_amount_per_year
+FROM ASSIGNMENT.sales 
+GROUP BY EXTRACT (YEAR FROM sale_date );
 
 -- 109. Calculate the number of days each customer has been registered (from registration_date to current date)
+SELECT c.customer_id ,c.first_name ,c.last_name , (current_date - registration_date) AS days_registered
+FROM ASSIGNMENT.customers c ;
 
 -- 110. Display each sale and extract the year and month from the sale date
+SELECT sale_id, EXTRACT (YEAR FROM sale_date) AS sale_year , EXTRACT (MONTH FROM sale_date) AS sale_month, total_amount
+FROM ASSIGNMENT.sales ;
 
 -- 111. Display each customer’s email and replace null values with 'No Email Provided' using COALESCE
+SELECT c.customer_id ,c.first_name ,c.last_name ,coalesce(email,'No Email Provided') AS email
+FROM ASSIGNMENT.customers c 
+ORDER BY c.customer_id ;
 
 -- 112. Find customers who do not have an email address
+SELECT c.customer_id ,c.first_name ,c.last_name ,c.email 
+FROM ASSIGNMENT.customers c 
+WHERE c.email IS null;
 
 -- 113. Find products that have never been sold using a subquery
+SELECT p.product_id , p.product_name 
+FROM ASSIGNMENT.products p 
+WHERE NOT EXISTS  (SELECT s.product_id 
+			FROM ASSIGNMENT.sales s
+			WHERE s.product_id  = p.product_id );
 
 -- 114. Find customers who have not made any purchases using a subquery
 
