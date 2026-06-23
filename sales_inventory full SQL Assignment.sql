@@ -1402,28 +1402,169 @@ WHERE NOT EXISTS  (SELECT s.product_id
 			WHERE s.product_id  = p.product_id );
 
 -- 114. Find customers who have not made any purchases using a subquery
+SELECT c.customer_id , c.first_name ,c.last_name 
+FROM ASSIGNMENT.customers c 
+WHERE NOT EXISTS (SELECT s.customer_id 
+			FROM ASSIGNMENT.sales s
+			WHERE c.customer_id = s.customer_id );
 
 -- 115. Update the products table to assign a price_category (Premium, Standard, Budget) based on price using CASE WHEN
+UPDATE ASSIGNMENT.products p 
+SET price_category =
+	CASE 
+		WHEN p.price_category = 'Expensive' THEN 'Premium'
+		WHEN p.price_category = 'Moderate' THEN 'Standard'
+		ELSE 'Budget'
+	END;
 
 -- 116. Create a PostgreSQL function/procedure that takes a minimum revenue as input and returns all products whose total sales exceed that value
+CREATE OR REPLACE FUNCTION sales_rev_above_min(min_revenue NUMERIC)
+RETURNS TABLE (
+    product_id INT,
+    product_name VARCHAR(100),
+    total_sales NUMERIC
+)
+AS $$
+BEGIN
+
+    RETURN QUERY
+    SELECT
+        p.product_id,
+        p.product_name,
+        SUM(s.total_amount) AS total_sales
+    FROM ASSIGNMENT.products p
+    JOIN ASSIGNMENT.sales s
+        ON p.product_id = s.product_id
+    GROUP BY
+        p.product_id,
+        p.product_name
+    HAVING
+        SUM(s.total_amount) > min_revenue;
+
+END;
+$$ LANGUAGE plpgsql;
 
 -- 117. Create a PostgreSQL function/procedure that takes a customer_id as input and returns the total amount spent by that customer
+CREATE OR REPLACE FUNCTION total_amount_spent(customer_id NUMERIC )
+RETURNS TABLE (
+		customer_id INT,
+		first_name VARCHAR(50),
+		last_name VARCHAR(50),
+		total_spent DECIMal 
+)
+AS $$
+BEGIN
+	RETURN query
+	SELECT c.customer_id, c.first_name, c.last_name, sum(s.total_amount) AS total_spent
+	FROM ASSIGNMENT.customers c
+	JOIN ASSIGNMENT.sales s
+		ON c.customer_id = s.customer_id
+	GROUP BY c.customer_id, c.first_name, c.last_name;
+END;
+$$ LANGUAGE plpgsql;
+
+SELECT *
+FROM total_amount_spent(4);
+
+DROP FUNCTION total_amount_spent;
 
 -- 118. Create a PostgreSQL function/procedure that takes a start_date and end_date as input and returns the number of orders made within that date range
+CREATE OR REPLACE FUNCTION orders_in_date_range(
+    start_date DATE,
+    end_date DATE
+)
+RETURNS BIGINT
+AS $$
+DECLARE
+    order_count BIGINT;
+BEGIN
+    SELECT COUNT(*)
+    INTO order_count
+    FROM ASSIGNMENT.sales
+    WHERE order_date BETWEEN start_date AND end_date;
+
+    RETURN order_count;
+END;
+$$ LANGUAGE plpgsql;
 
 -- 119. Create a PostgreSQL stored procedure that inserts a new record into the sales table 
-
+CREATE OR REPLACE PROCEDURE insert_sale(
+    p_sale_id INT,
+    p_customer_id INT,
+    p_product_id INT,
+    p_quantity_sold INT,
+    p_sale_date DATE,
+    p_total_amount NUMERIC
+)
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    INSERT INTO ASSIGNMENT.sales (
+        sale_id,
+        customer_id,
+        product_id,
+        quantity_sold,
+        sale_date,
+        total_amount
+    )
+    VALUES (
+        p_sale_id,
+        p_customer_id,
+        p_product_id,
+        p_quantity_sold,
+        p_sale_date,
+        p_total_amount
+    );
+END;
+$$;
 -- 120. Create an index on the product_id column in the sales table to improve join performance
+CREATE INDEX idx_sales_product_id
+ON ASSIGNMENT.sales(product_id);
 
 -- 121. Create an index on the registration_date column in the customers table to improve filtering by date
+CREATE INDEX idx_customers_reg_date
+ON ASSIGNMENT.customers(registration_date);
 
--- 122. Write a transaction that inserts a new sale using sale_id, customer_id, product_id, quantity_sold, sale_date, and total_amount, then updates the corresponding product stock_quantity, ensuring both operations succeed or fail together
+-- 122. Write a transaction that inserts a new sale using sale_id, customer_id, product_id, quantity_sold, sale_date, and total_amount, 
+-- then updates the corresponding product stock_quantity, ensuring both operations succeed or fail together
+BEGIN;
 
+	INSERT INTO ASSIGNMENT.sales (sale_id, customer_id, product_id, quantity_sold, sale_date, total_amount)
+	VALUES (16,17,8,1,'2023-10-20',50);
+	
+	UPDATE ASSIGNMENT.products 
+	SET 
+		stock_quantity = stock_quantity - 1
+	WHERE product_id = 8;
+	
+	UPDATE ASSIGNMENT.inventory  
+	SET 
+		stock_quantity = stock_quantity - 1
+	WHERE product_id = 8;
+	
+COMMIT;		
+	
 -- 123. Write a transaction that updates a customer’s email and rolls back the change if the email is invalid
-
+BEGIN;
+	
+	UPDATE ASSIGNMENT.customers 
+	SET
+		
 -- 124. Create a view that shows total revenue per product
+CREATE VIEW total_revenue_per_product AS 
+	SELECT p.product_id, p.product_name, sum(s.total_amount) AS total_revenue
+	FROM ASSIGNMENT.products p 
+	JOIN ASSIGNMENT.sales s
+		ON p.product_id = s.product_id
+	GROUP BY p.product_id, p.product_name;
 
 -- 125. Create a view that shows each customer and their total spending
+CREATE VIEW customers_total_spending AS 
+	SELECT c.customer_id, c.first_name, c.last_name, sum(s.total_amount) AS total_spending
+	FROM ASSIGNMENT.customers c
+	JOIN ASSIGNMENT.sales s
+		ON c.customer_id = s.customer_id
+	GROUP BY c.customer_id, c.first_name, c.last_name;
 
 -- 126. Use UNION to combine a list of all customer first names and product names into a single column
 
