@@ -1545,10 +1545,7 @@ BEGIN;
 COMMIT;		
 	
 -- 123. Write a transaction that updates a customer’s email and rolls back the change if the email is invalid
-BEGIN;
-	
-	UPDATE ASSIGNMENT.customers 
-	SET
+-- Question Incomplete
 		
 -- 124. Create a view that shows total revenue per product
 CREATE VIEW total_revenue_per_product AS 
@@ -1567,38 +1564,90 @@ CREATE VIEW customers_total_spending AS
 	GROUP BY c.customer_id, c.first_name, c.last_name;
 
 -- 126. Use UNION to combine a list of all customer first names and product names into a single column
+SELECT first_name 
+FROM ASSIGNMENT.customers 
+UNION 
+SELECT product_name 
+FROM ASSIGNMENT.products;
 
 -- 127. Use INTERSECT to find values that appear in both a list of customer IDs and a list of customer IDs who made purchases
+SELECT c.customer_id
+FROM ASSIGNMENT.customers c
+INTERSECT 
+SELECT s.customer_id
+FROM ASSIGNMENT.sales s
+ORDER BY s.customer_id ;
 
 -- 128. Perform an anti-join to find products that have never been sold using LEFT JOIN
+SELECT p.product_id, p.product_name
+FROM ASSIGNMENT.products p
+LEFT JOIN ASSIGNMENT.sales s
+    ON p.product_id = s.product_id
+WHERE s.product_id IS NULL;
 
 -- 129. Use NOT EXISTS to find customers who have not made any purchases
+SELECT c.customer_id, c.first_name 
+FROM ASSIGNMENT.customers c
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM ASSIGNMENT.sales s
+    WHERE c.customer_id = s.customer_id);
 
 -- 130. Cast the price column to an integer and display it alongside the original price
+SELECT cast(price AS INT) AS price_int, price AS original_price
+FROM ASSIGNMENT.products ;
+
+SELECT price::INT AS price_integer, price AS original_price
+FROM ASSIGNMENT.products;
 
 -- 131. Convert registration_date to text format and display it in 'YYYY-MM' format
+SELECT TO_CHAR(registration_date, 'YYYY-MM')
+FROM ASSIGNMENT.customers ;
 
 -- 132. The following query returns an error due to improper GROUP BY usage. Identify and fix the issue
 -- SELECT product_id, product_name, SUM(total_amount) FROM sales GROUP BY product_id;
+SELECT p.product_id, p.product_name, SUM(total_amount) 
+FROM ASSIGNMENT.sales s
+JOIN ASSIGNMENT.products p 
+	ON p.product_id = s.product_id 
+GROUP BY p.product_id, p.product_name ;
 
 -- 133. The following query incorrectly filters aggregated results using WHERE. Identify and correct it
 -- SELECT product_id, SUM(total_amount) FROM sales WHERE SUM(total_amount) > 1000 GROUP BY product_id;
+SELECT product_id, SUM(total_amount) 
+FROM ASSIGNMENT.sales 
+GROUP BY product_id
+HAVING SUM(total_amount) > 1000 ;
 
 -- 134. The following query returns incorrect results because it uses the wrong join condition. Identify and fix it
 -- SELECT *
 -- FROM assignment.sales s
 -- JOIN assignment.products p
 --   ON s.customer_id = p.product_id;
+ SELECT *
+FROM assignment.sales s
+JOIN assignment.products p
+	ON s.product_id = p.product_id;
 
 -- 135. Replace NULL email values with 'No Email Provided' using COALESCE if any
+SELECT coalesce(email,'No Email Provided') AS email
+FROM ASSIGNMENT.customers ;
 
 -- 136. Trim any leading or trailing spaces from customer first names if any
+SELECT TRIM(first_name) AS cleaned_first_names
+FROM ASSIGNMENT.customers;
 
 -- 137. Convert all customer emails to lowercase if any
+SELECT LOWER(email) AS lowercase_email
+FROM ASSIGNMENT.customers;
 
 -- 138. Replace empty strings in phone numbers with NULL if any
+SELECT nullif(phone_mumber, '')
+FROM ASSIGNMENT.customers;
 
 -- 139. Extract the year from registration_date and handle any NULL dates gracefully if any
+SELECT coalesce(EXTRACT (YEAR FROM registration_date)::TEXT,'Year Not Available') AS reg_year
+FROM ASSIGNMENT.customers;
 
 
 
